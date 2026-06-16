@@ -1141,24 +1141,24 @@ function gerarPDF() {
 
   // ── Faixa cliente / vendedor ──
   doc.setFillColor(...AZUL_DARK);
-  doc.rect(0, 28, W, 10, 'F');
+  doc.rect(0, 28, W, 14, 'F');
 
   const campos = [
-    ['Cliente', orc.cliente || '—', 10],
-    ['CNPJ', orc.cnpj || '—', 65],
-    ['Contato', orc.contato || '—', 120],
-    ['Vendedor', orc.vendedor || '—', 175],
-    ['Validade', orc.validade ? formatarData(orc.validade) : '—', 235],
+    { label: 'Cliente',  val: orc.cliente  || '—', x: 10,  maxW: 50 },
+    { label: 'CNPJ',     val: orc.cnpj     || '—', x: 68,  maxW: 48 },
+    { label: 'Contato',  val: orc.contato  || '—', x: 124, maxW: 46 },
+    { label: 'Vendedor', val: orc.vendedor || '—', x: 178, maxW: 50 },
+    { label: 'Validade', val: orc.validade ? formatarData(orc.validade) : '—', x: 236, maxW: 50 },
   ];
-  campos.forEach(([label, val, x]) => {
-    doc.setTextColor(180,210,245);
+  campos.forEach(({ label, val, x, maxW }) => {
+    doc.setTextColor(180, 210, 245);
     doc.setFontSize(6.5);
     doc.setFont('helvetica', 'bold');
     doc.text(label.toUpperCase(), x, 32);
     doc.setTextColor(...BRANCO);
     doc.setFontSize(8);
     doc.setFont('helvetica', 'normal');
-    doc.text(val, x, 36.5);
+    doc.text(String(val), x, 38, { maxWidth: maxW });
   });
 
   // ── Tabela de itens ──
@@ -1192,7 +1192,7 @@ function gerarPDF() {
   const totalVal = orc.itens.reduce((a, i) => a + parseMoeda(i.unitario)*(parseFloat(i.qtde)||0), 0);
 
   doc.autoTable({
-    startY: 42,
+    startY: 46,
     columns: colunas,
     body: linhas,
     foot: [[
