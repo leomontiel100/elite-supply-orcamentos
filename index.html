@@ -1,0 +1,1329 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gerador de Orçamentos · Elite Supply</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --azul: #1058A0;
+    --azul-dark: #0d4a8a;
+    --azul-light: #E6F1FB;
+    --azul-header: #1a5fa8;
+    --cinza-bg: #F4F7FB;
+    --cinza-borda: #D0D9E8;
+    --cinza-texto: #555F6E;
+    --verde: #1B7A4E;
+    --vermelho: #C0392B;
+    --amarelo: #E67E22;
+    --branco: #ffffff;
+    --fonte: 'Segoe UI', system-ui, sans-serif;
+  }
+
+  body { font-family: var(--fonte); background: var(--cinza-bg); min-height: 100vh; color: #1a1a2e; }
+
+  /* ── LAYOUT ── */
+  .app { display: grid; grid-template-columns: 280px 1fr; min-height: 100vh; }
+
+  /* ── SIDEBAR ── */
+  .sidebar {
+    background: var(--azul-dark);
+    color: white;
+    display: flex; flex-direction: column;
+    position: sticky; top: 0; height: 100vh; overflow-y: auto;
+  }
+  .sidebar-logo {
+    padding: 20px 18px 16px;
+    border-bottom: 1px solid rgba(255,255,255,0.12);
+  }
+  .sidebar-logo h1 { font-size: 16px; font-weight: 600; letter-spacing: -0.2px; }
+  .sidebar-logo span { color: #7EC8F7; }
+  .sidebar-logo p { font-size: 11px; color: rgba(255,255,255,0.5); margin-top: 2px; }
+
+  .sidebar-section { padding: 14px 18px 6px; }
+  .sidebar-section h2 { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: rgba(255,255,255,0.4); margin-bottom: 8px; }
+
+  .btn-novo {
+    width: 100%; padding: 10px 14px; border-radius: 8px;
+    background: rgba(255,255,255,0.12); border: 1px dashed rgba(255,255,255,0.25);
+    color: white; font-size: 13px; cursor: pointer; text-align: left;
+    display: flex; align-items: center; gap: 8px; transition: background .15s;
+  }
+  .btn-novo:hover { background: rgba(255,255,255,0.18); }
+
+  .lista-orcamentos { padding: 6px 10px 20px; display: flex; flex-direction: column; gap: 4px; }
+
+  .orc-item {
+    padding: 10px 12px; border-radius: 8px; cursor: pointer;
+    transition: background .15s; position: relative;
+    border: 1px solid transparent;
+  }
+  .orc-item:hover { background: rgba(255,255,255,0.08); }
+  .orc-item.ativo { background: rgba(255,255,255,0.15); border-color: rgba(255,255,255,0.2); }
+  .orc-item-num { font-size: 10px; color: rgba(255,255,255,0.45); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+  .orc-item-nome { font-size: 13px; color: white; font-weight: 500; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .orc-item-cliente { font-size: 11px; color: rgba(255,255,255,0.5); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .orc-badge {
+    display: inline-block; font-size: 9px; font-weight: 600; padding: 2px 6px;
+    border-radius: 20px; margin-top: 4px; text-transform: uppercase; letter-spacing: 0.3px;
+  }
+  .badge-rascunho { background: rgba(255,255,255,0.12); color: rgba(255,255,255,0.6); }
+  .badge-baixado  { background: rgba(27,122,78,0.35); color: #7ef5b5; }
+  .badge-atualizado { background: rgba(230,126,34,0.35); color: #ffd488; }
+
+  /* ── MAIN ── */
+  .main { padding: 28px 32px; overflow-y: auto; }
+
+  .main-topo {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 24px;
+  }
+  .main-topo h2 { font-size: 18px; font-weight: 600; color: var(--azul); }
+  .main-topo p { font-size: 13px; color: var(--cinza-texto); margin-top: 2px; }
+
+  /* ── CARD ── */
+  .card { background: white; border-radius: 12px; border: 1px solid var(--cinza-borda); margin-bottom: 16px; overflow: hidden; }
+  .card-header {
+    padding: 14px 20px; border-bottom: 1px solid var(--cinza-borda);
+    background: #f9fbfd; display: flex; align-items: center; justify-content: space-between;
+  }
+  .card-header h3 { font-size: 13px; font-weight: 600; color: var(--azul); display: flex; align-items: center; gap: 7px; }
+  .card-body { padding: 20px; }
+
+  /* ── FORMULÁRIO ── */
+  .form-grid { display: grid; gap: 14px; }
+  .form-grid-2 { grid-template-columns: 1fr 1fr; }
+  .form-grid-3 { grid-template-columns: 1fr 1fr 1fr; }
+  .form-grid-4 { grid-template-columns: 1fr 1fr 1fr 1fr; }
+
+  .form-group label { display: block; font-size: 11px; font-weight: 600; color: var(--cinza-texto); margin-bottom: 5px; text-transform: uppercase; letter-spacing: 0.4px; }
+  .form-group input, .form-group select, .form-group textarea {
+    width: 100%; padding: 9px 11px; font-size: 13px; color: #1a1a2e;
+    border: 1px solid var(--cinza-borda); border-radius: 7px;
+    background: white; font-family: var(--fonte); transition: border-color .15s;
+    outline: none;
+  }
+  .form-group input:focus, .form-group select:focus, .form-group textarea:focus { border-color: var(--azul); box-shadow: 0 0 0 3px rgba(16,88,160,0.08); }
+  .form-group textarea { resize: vertical; min-height: 60px; }
+
+  /* ── CAMPO CNPJ COM BUSCA ── */
+  .cnpj-row { display: flex; gap: 6px; }
+  .cnpj-row input { flex: 1; }
+  .btn-buscar-cnpj {
+    flex-shrink: 0; padding: 9px 14px; font-size: 12px; font-weight: 600;
+    border-radius: 7px; border: 1px solid var(--azul); background: var(--azul-light);
+    color: var(--azul); cursor: pointer; font-family: var(--fonte);
+    display: flex; align-items: center; gap: 5px; white-space: nowrap;
+    transition: background .15s;
+  }
+  .btn-buscar-cnpj:hover { background: var(--azul); color: white; }
+  .btn-buscar-cnpj:disabled { opacity: .6; cursor: wait; }
+  .cnpj-status { font-size: 11px; margin-top: 5px; display: none; }
+  .cnpj-status.ok { color: #1B7A4E; display: block; }
+  .cnpj-status.erro { color: var(--vermelho); display: block; }
+  .cnpj-status.loading { color: var(--cinza-texto); display: block; }
+
+  /* ── TABELA DE ITENS ── */
+  .tabela-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  thead th {
+    background: var(--azul); color: white; padding: 10px 12px;
+    text-align: left; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px;
+  }
+  thead th:last-child { text-align: center; }
+  tbody tr:nth-child(even) { background: var(--azul-light); }
+  tbody tr:nth-child(odd) { background: white; }
+  tbody td { padding: 8px 10px; border-bottom: 1px solid #edf2f8; vertical-align: middle; }
+  tbody td input {
+    width: 100%; border: none; background: transparent; font-size: 13px; color: #1a1a2e;
+    font-family: var(--fonte); outline: none; padding: 2px 4px;
+  }
+  tbody td input:focus { background: #fff3cd; border-radius: 4px; }
+  .col-ref   { width: 80px; }
+  .col-qtde  { width: 60px; text-align: center; }
+  .col-unit  { width: 110px; text-align: right; }
+  .col-total { width: 110px; text-align: right; font-weight: 600; color: var(--azul); }
+  .col-dias  { width: 90px; text-align: center; }
+  .col-fat   { width: 150px; }
+  .col-del   { width: 44px; text-align: center; }
+
+  .btn-del-row {
+    background: none; border: none; color: #ccc; cursor: pointer; font-size: 16px;
+    padding: 2px 6px; border-radius: 4px; transition: color .15s, background .15s;
+  }
+  .btn-del-row:hover { color: var(--vermelho); background: #fde8e8; }
+
+  .tfoot-total { background: var(--azul) !important; }
+  .tfoot-total td { padding: 10px 12px; font-weight: 700; color: white !important; font-size: 13px; }
+  .tfoot-total .total-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
+
+  .btn-add-linha {
+    display: flex; align-items: center; gap: 6px; padding: 8px 14px;
+    background: var(--azul-light); border: 1px dashed var(--azul);
+    color: var(--azul); border-radius: 7px; font-size: 13px; cursor: pointer;
+    margin-top: 10px; transition: background .15s; font-family: var(--fonte);
+  }
+  .btn-add-linha:hover { background: #d3e8f7; }
+
+  /* ── RODAPÉ DA PROPOSTA ── */
+  .rodape-grid { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 14px; }
+
+  /* ── AÇÕES ── */
+  .acoes { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
+
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px; padding: 10px 18px;
+    border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer;
+    border: none; font-family: var(--fonte); transition: filter .15s, transform .1s;
+  }
+  .btn:active { transform: scale(.98); }
+  .btn-azul { background: var(--azul); color: white; }
+  .btn-azul:hover { filter: brightness(1.1); }
+  .btn-verde { background: var(--verde); color: white; }
+  .btn-verde:hover { filter: brightness(1.1); }
+  .btn-outline { background: white; color: var(--azul); border: 1px solid var(--cinza-borda); }
+  .btn-outline:hover { background: var(--azul-light); }
+  .btn-vermelho { background: var(--vermelho); color: white; }
+  .btn-vermelho:hover { filter: brightness(1.1); }
+
+  /* ── VAZIO ── */
+  .empty-state {
+    text-align: center; padding: 60px 20px; color: var(--cinza-texto);
+  }
+  .empty-state .icon { font-size: 48px; margin-bottom: 12px; opacity: .4; }
+  .empty-state h3 { font-size: 16px; font-weight: 600; margin-bottom: 6px; }
+  .empty-state p { font-size: 13px; }
+
+  /* ── TOAST ── */
+  .toast {
+    position: fixed; bottom: 24px; right: 24px; z-index: 9999;
+    background: #1a1a2e; color: white; padding: 12px 18px; border-radius: 10px;
+    font-size: 13px; font-weight: 500; box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+    transform: translateY(80px); opacity: 0; transition: all .3s;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .toast.show { transform: translateY(0); opacity: 1; }
+  .toast.sucesso { border-left: 4px solid #1B7A4E; }
+  .toast.info    { border-left: 4px solid var(--azul); }
+
+  /* ── INFO EMPRESA (fixa) ── */
+  .empresa-row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 4px; }
+  .empresa-tag { background: var(--azul-light); color: var(--azul); font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 20px; }
+
+  /* ── HISTÓRICO ── */
+  .historico-item {
+    display: flex; align-items: center; gap: 10px; padding: 8px 12px;
+    border-radius: 8px; background: var(--cinza-bg); border: 1px solid var(--cinza-borda);
+    margin-bottom: 6px; font-size: 12px;
+  }
+  .historico-icone { font-size: 16px; }
+  .historico-texto { flex: 1; color: var(--cinza-texto); }
+  .historico-data { color: #aab; font-size: 11px; }
+
+  hr.sep { border: none; border-top: 1px solid var(--cinza-borda); margin: 4px 0 16px; }
+
+  /* ── TELA DE LOGIN (quem é você) ── */
+  .login-overlay {
+    position: fixed; inset: 0; background: rgba(13,74,138,0.55);
+    display: flex; align-items: center; justify-content: center; z-index: 99999;
+    backdrop-filter: blur(2px);
+  }
+  .login-box {
+    background: white; border-radius: 14px; padding: 32px; width: 360px;
+    text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,0.25);
+  }
+  .login-box h2 { font-size: 17px; font-weight: 600; color: var(--azul); margin-bottom: 4px; }
+  .login-box p { font-size: 12px; color: var(--cinza-texto); margin-bottom: 20px; }
+  .login-opcoes { display: flex; flex-direction: column; gap: 10px; }
+  .login-btn {
+    padding: 14px; border-radius: 10px; border: 1px solid var(--cinza-borda);
+    background: var(--cinza-bg); font-size: 14px; font-weight: 600; color: #1a1a2e;
+    cursor: pointer; font-family: var(--fonte); transition: all .15s;
+  }
+  .login-btn:hover { background: var(--azul-light); border-color: var(--azul); color: var(--azul); }
+
+  /* ── USUÁRIO ATUAL (sidebar) ── */
+  .usuario-atual {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 14px; margin: 0 10px 10px; border-radius: 8px;
+    background: rgba(255,255,255,0.08); font-size: 12px;
+  }
+  .usuario-atual .nome { color: white; font-weight: 600; }
+  .usuario-atual .nome span { color: rgba(255,255,255,0.5); font-weight: 400; display: block; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .usuario-trocar { background: none; border: none; color: rgba(255,255,255,0.45); font-size: 11px; cursor: pointer; text-decoration: underline; }
+  .usuario-trocar:hover { color: white; }
+
+  /* ── PAINEL DE DOWNLOADS ── */
+  .downloads-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
+  .download-card {
+    border: 1px solid var(--cinza-borda); border-radius: 10px; padding: 14px 16px;
+    background: var(--cinza-bg); display: flex; align-items: center; gap: 12px;
+  }
+  .download-card .avatar {
+    width: 38px; height: 38px; border-radius: 50%; background: var(--azul);
+    color: white; display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 15px; flex-shrink: 0;
+  }
+  .download-card .info .nome { font-size: 13px; font-weight: 600; color: #1a1a2e; }
+  .download-card .info .qtd { font-size: 20px; font-weight: 700; color: var(--azul); line-height: 1.2; }
+  .download-card .info .label { font-size: 10px; color: var(--cinza-texto); text-transform: uppercase; letter-spacing: 0.5px; }
+
+  .download-log { max-height: 180px; overflow-y: auto; }
+  .download-log-item {
+    display: flex; align-items: center; gap: 10px; padding: 7px 10px;
+    border-radius: 7px; font-size: 12px; border-bottom: 1px solid #f0f3f8;
+  }
+  .download-log-item .tag {
+    font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 20px;
+    background: var(--azul-light); color: var(--azul); text-transform: uppercase;
+  }
+  .download-log-item .desc { flex: 1; color: #1a1a2e; }
+  .download-log-item .data { color: #aab; font-size: 11px; }
+
+  .sync-status {
+    display: flex; align-items: center; gap: 6px; font-size: 11px; color: rgba(255,255,255,0.4);
+    padding: 0 18px 12px;
+  }
+  .sync-dot { width: 7px; height: 7px; border-radius: 50%; background: #4ade80; }
+  .sync-dot.off { background: #f87171; }
+
+
+
+  @media (max-width: 900px) {
+    .app { grid-template-columns: 1fr; }
+    .sidebar { height: auto; position: relative; }
+    .main { padding: 16px; }
+    .form-grid-2, .form-grid-3, .form-grid-4, .rodape-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ══ LOGIN: QUEM É VOCÊ ══ -->
+<div class="login-overlay" id="loginOverlay" style="display:none">
+  <div class="login-box">
+    <h2>Quem está usando?</h2>
+    <p>Isso é usado para contabilizar os orçamentos baixados por cada vendedor.</p>
+    <div class="login-opcoes">
+      <button class="login-btn" onclick="definirUsuario('Gabriel')">👤 Gabriel</button>
+      <button class="login-btn" onclick="definirUsuario('Leonardo')">👤 Leonardo</button>
+    </div>
+  </div>
+</div>
+
+<div class="app">
+
+  <!-- ══ SIDEBAR ══ -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <h1>Elite<span>Supply</span></h1>
+      <p>Gerador de Orçamentos</p>
+    </div>
+
+    <div class="usuario-atual" id="usuarioAtualBox" style="display:none">
+      <div class="nome"><span>Usando como</span><span id="nomeUsuarioAtual"></span></div>
+      <button class="usuario-trocar" onclick="trocarUsuario()">trocar</button>
+    </div>
+    <div class="sync-status" id="syncStatus">
+      <span class="sync-dot off" id="syncDot"></span>
+      <span id="syncTexto">Conectando...</span>
+    </div>
+
+    <div class="sidebar-section">
+
+      <h2>Novo orçamento</h2>
+      <button class="btn-novo" onclick="novoOrcamento()">
+        <span>＋</span> Criar orçamento
+      </button>
+    </div>
+
+    <div class="sidebar-section">
+      <h2>Orçamentos</h2>
+    </div>
+    <div class="lista-orcamentos" id="listaOrcamentos">
+      <!-- preenchido por JS -->
+    </div>
+  </aside>
+
+  <!-- ══ MAIN ══ -->
+  <main class="main">
+    <div id="appContent">
+      <!-- preenchido por JS -->
+    </div>
+  </main>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ════════════════════════════════════════════
+//  CONFIGURAÇÃO DO FIREBASE
+//  ⚠️ Substitua pelos dados do SEU projeto Firebase
+//  (Console Firebase → Configurações do Projeto → Seus apps → SDK setup)
+// ════════════════════════════════════════════
+const firebaseConfig = {
+  apiKey: "AIzaSyBhN5A6CxEuWUHjCKqblL1qDZmWxKPA318",
+  authDomain: "elite-supply-b6dc3.firebaseapp.com",
+  projectId: "elite-supply-b6dc3",
+  storageBucket: "elite-supply-b6dc3.firebasestorage.app",
+  messagingSenderId: "667202076100",
+  appId: "1:667202076100:web:2aa432da88a397441f3891"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+// ════════════════════════════════════════════
+//  ESTADO
+// ════════════════════════════════════════════
+const USUARIO_KEY = 'elitesupply_usuario';
+let orcamentos = [];
+let downloads = [];
+let orcamentoAtivo = null;
+let usuarioAtual = null;
+
+// ── Salva/atualiza um orçamento no Firestore ──
+async function salvarOrcamento(orc) {
+  try {
+    await db.collection('orcamentos').doc(orc.id).set(orc);
+  } catch (e) {
+    console.error(e);
+    toast('Erro ao salvar na nuvem. Verifique sua conexão.', 'info');
+  }
+}
+
+// ── Remove um orçamento no Firestore ──
+async function removerOrcamentoDB(id) {
+  try {
+    await db.collection('orcamentos').doc(id).delete();
+  } catch (e) {
+    console.error(e);
+    toast('Erro ao excluir na nuvem.', 'info');
+  }
+}
+
+// ── Registra um download no Firestore ──
+async function registrarDownload(orc) {
+  try {
+    await db.collection('downloads').add({
+      vendedor: usuarioAtual,
+      cotacao: labelOrcamento(orc),
+      cliente: orc.cliente || '(sem cliente)',
+      timestamp: firebase.firestore.FieldValue.serverTimestamp()
+    });
+  } catch (e) {
+    console.error(e);
+    toast('Erro ao registrar download na nuvem.', 'info');
+  }
+}
+
+// ── Ouve mudanças em tempo real (orçamentos) ──
+function ouvirOrcamentos() {
+  db.collection('orcamentos').onSnapshot(snapshot => {
+    orcamentos = snapshot.docs.map(d => d.data());
+    orcamentos.sort((a,b) => (a.numeroBase - b.numeroBase) || (a.revisao - b.revisao));
+    renderSidebar();
+    // Se o orçamento ativo foi removido por outro usuário, limpa a tela
+    if (orcamentoAtivo && !orcamentos.find(o => o.id === orcamentoAtivo)) {
+      orcamentoAtivo = null;
+    }
+    renderEditor();
+    marcarConectado(true);
+  }, err => {
+    console.error(err);
+    marcarConectado(false);
+  });
+}
+
+// ── Ouve mudanças em tempo real (downloads) ──
+function ouvirDownloads() {
+  db.collection('downloads').orderBy('timestamp', 'desc').limit(50).onSnapshot(snapshot => {
+    downloads = snapshot.docs.map(d => d.data());
+    renderDownloadsPanel();
+  }, err => console.error(err));
+}
+
+function marcarConectado(ok) {
+  const dot = document.getElementById('syncDot');
+  const txt = document.getElementById('syncTexto');
+  if (!dot) return;
+  if (ok) {
+    dot.classList.remove('off');
+    txt.textContent = 'Sincronizado em tempo real';
+  } else {
+    dot.classList.add('off');
+    txt.textContent = 'Sem conexão com a nuvem';
+  }
+}
+
+// ════════════════════════════════════════════
+//  CONSULTA CNPJ (Receita Federal via BrasilAPI)
+// ════════════════════════════════════════════
+function formatarCnpjInput(input) {
+  let v = input.value.replace(/\D/g, '').slice(0, 14);
+  if (v.length > 12) {
+    v = v.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{1,2})$/, '$1.$2.$3/$4-$5');
+  } else if (v.length > 8) {
+    v = v.replace(/^(\d{2})(\d{3})(\d{3})(\d{1,4})$/, '$1.$2.$3/$4');
+  } else if (v.length > 5) {
+    v = v.replace(/^(\d{2})(\d{3})(\d{1,3})$/, '$1.$2.$3');
+  } else if (v.length > 2) {
+    v = v.replace(/^(\d{2})(\d{1,3})$/, '$1.$2');
+  }
+  input.value = v;
+  atualizar('cnpj', v);
+}
+
+async function buscarCNPJ() {
+  const orc = getAtivo();
+  if (!orc) return;
+  const input = document.getElementById('f_cnpj');
+  const statusEl = document.getElementById('cnpjStatus');
+  const btn = document.getElementById('btnBuscarCnpj');
+
+  const cnpjLimpo = (input.value || '').replace(/\D/g, '');
+  if (cnpjLimpo.length !== 14) {
+    statusEl.className = 'cnpj-status erro';
+    statusEl.textContent = 'CNPJ inválido. Digite os 14 números.';
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = '⏳ Buscando...';
+  statusEl.className = 'cnpj-status loading';
+  statusEl.textContent = 'Consultando dados na Receita Federal...';
+
+  try {
+    const resp = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpjLimpo}`);
+    if (!resp.ok) throw new Error('CNPJ não encontrado');
+    const data = await resp.json();
+
+    // Razão social → campo "Cliente"
+    const nome = data.razao_social || data.nome_fantasia || '';
+    if (nome) {
+      orc.cliente = nome;
+      document.getElementById('f_cliente').value = nome;
+    }
+
+    // Endereço completo → campo "Endereço / Cidade"
+    const partes = [];
+    if (data.logradouro) partes.push(`${data.descricao_tipo_logradouro || ''} ${data.logradouro}, ${data.numero || ''}`.trim());
+    if (data.bairro) partes.push(data.bairro);
+    if (data.municipio) partes.push(`${data.municipio}/${data.uf || ''}`);
+    if (data.cep) partes.push(`CEP ${data.cep}`);
+    const endereco = partes.join(' — ');
+    if (endereco) {
+      orc.enderecoCliente = endereco;
+      document.getElementById('f_endereco').value = endereco;
+    }
+
+    // Telefone (se vazio)
+    if (!orc.telefone && data.ddd_telefone_1) {
+      orc.telefone = data.ddd_telefone_1;
+      const tel = document.getElementById('f_telefone');
+      if (tel) tel.value = data.ddd_telefone_1;
+    }
+
+    // Email (se vazio)
+    if (!orc.email && data.email) {
+      orc.email = data.email;
+      const em = document.getElementById('f_email');
+      if (em) em.value = data.email;
+    }
+
+    orc.atualizadoEm = new Date().toISOString();
+    salvarOrcamento(orc);
+    renderSidebar();
+    const titulo = document.querySelector('.main-topo h2');
+    if (titulo) titulo.textContent = labelOrcamento(orc);
+
+    statusEl.className = 'cnpj-status ok';
+    let avisoSituacao = '';
+    if (data.descricao_situacao_cadastral && data.descricao_situacao_cadastral.toUpperCase() !== 'ATIVA') {
+      avisoSituacao = ` ⚠️ Situação cadastral: ${data.descricao_situacao_cadastral}`;
+    }
+    statusEl.textContent = `✓ Dados encontrados e preenchidos.${avisoSituacao}`;
+    toast('Dados do CNPJ carregados!', 'sucesso');
+
+  } catch (e) {
+    console.error(e);
+    statusEl.className = 'cnpj-status erro';
+    statusEl.textContent = 'Não foi possível encontrar esse CNPJ. Verifique o número.';
+    toast('CNPJ não encontrado.', 'info');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🔍 Buscar';
+  }
+}
+
+// ════════════════════════════════════════════
+//  USUÁRIO (Gabriel / Leonardo)
+// ════════════════════════════════════════════
+function definirUsuario(nome) {
+  usuarioAtual = nome;
+  localStorage.setItem(USUARIO_KEY, nome);
+  document.getElementById('loginOverlay').style.display = 'none';
+  document.getElementById('usuarioAtualBox').style.display = 'flex';
+  document.getElementById('nomeUsuarioAtual').textContent = nome;
+}
+
+function trocarUsuario() {
+  localStorage.removeItem(USUARIO_KEY);
+  usuarioAtual = null;
+  document.getElementById('usuarioAtualBox').style.display = 'none';
+  document.getElementById('loginOverlay').style.display = 'flex';
+}
+
+function verificarUsuario() {
+  const salvo = localStorage.getItem(USUARIO_KEY);
+  if (salvo) {
+    definirUsuario(salvo);
+  } else {
+    document.getElementById('loginOverlay').style.display = 'flex';
+  }
+}
+
+// ════════════════════════════════════════════
+//  MODELO
+// ════════════════════════════════════════════
+function gerarId() {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2,6);
+}
+
+function proximoNumero() {
+  if (orcamentos.length === 0) return 1;
+  const numeros = orcamentos.map(o => o.numeroBase);
+  return Math.max(...numeros) + 1;
+}
+
+function novoOrcamento() {
+  const num = proximoNumero();
+  const orc = {
+    id: gerarId(),
+    numeroBase: num,
+    revisao: 0,           // 0 = original, 1 = Atualização I, etc.
+    status: 'rascunho',   // rascunho | baixado | atualizado
+    criadoEm: new Date().toISOString(),
+    atualizadoEm: new Date().toISOString(),
+    criadoPor: usuarioAtual,
+
+    // Dados da proposta
+    cliente: '',
+    cnpj: '',
+    contato: '',
+    email: '',
+    telefone: '',
+    enderecoCliente: '',
+    validade: '',
+    condicaoPagamento: '',
+    formaPagamento: '',
+    vendedor: usuarioAtual || 'Leonardo Montiel',
+    observacoes: '',
+
+    // Itens
+    itens: [linhaVazia()]
+  };
+  orcamentos.push(orc);
+  salvarOrcamento(orc);
+  renderSidebar();
+  abrirOrcamento(orc.id);
+  toast('Orçamento criado!', 'sucesso');
+}
+
+function linhaVazia() {
+  return { id: gerarId(), referencia: '', descricao: '', moeda: 'R$', qtde: 1, unitario: '', entrega: '', faturadoPor: '' };
+}
+
+function labelOrcamento(orc) {
+  if (orc.revisao === 0) return `Cotação ${orc.numeroBase}`;
+  const romanos = ['I','II','III','IV','V','VI'];
+  return `Cotação ${orc.numeroBase} — Atualização ${romanos[orc.revisao - 1] || orc.revisao}`;
+}
+
+function statusLabel(s) {
+  if (s === 'rascunho') return '<span class="orc-badge badge-rascunho">Rascunho</span>';
+  if (s === 'baixado')  return '<span class="orc-badge badge-baixado">Baixado</span>';
+  return '<span class="orc-badge badge-atualizado">Atualizado</span>';
+}
+
+// ════════════════════════════════════════════
+//  RENDER SIDEBAR
+// ════════════════════════════════════════════
+function renderSidebar() {
+  const el = document.getElementById('listaOrcamentos');
+  if (orcamentos.length === 0) {
+    el.innerHTML = '<div style="padding:10px 12px; font-size:12px; color:rgba(255,255,255,0.35);">Nenhum orçamento ainda.</div>';
+    return;
+  }
+  el.innerHTML = [...orcamentos].reverse().map(o => `
+    <div class="orc-item ${orcamentoAtivo === o.id ? 'ativo' : ''}" onclick="abrirOrcamento('${o.id}')">
+      <div class="orc-item-num">${labelOrcamento(o)}</div>
+      <div class="orc-item-nome">${o.cliente || '(sem cliente)'}</div>
+      ${statusLabel(o.status)}
+    </div>
+  `).join('');
+}
+
+// ════════════════════════════════════════════
+//  ABRIR ORÇAMENTO
+// ════════════════════════════════════════════
+function abrirOrcamento(id) {
+  orcamentoAtivo = id;
+  renderSidebar();
+  renderEditor();
+}
+
+function getAtivo() {
+  return orcamentos.find(o => o.id === orcamentoAtivo);
+}
+
+// ════════════════════════════════════════════
+//  RENDER EDITOR
+// ════════════════════════════════════════════
+function renderEditor() {
+  const el = document.getElementById('appContent');
+  const orc = getAtivo();
+
+  if (!orc) {
+    el.innerHTML = `
+      <div class="main-topo">
+        <div>
+          <h2>Painel de Downloads</h2>
+          <p>Orçamentos baixados por cada vendedor</p>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-body">
+          <div class="downloads-grid" id="downloadsGrid"></div>
+          <h3 style="font-size:12px; font-weight:600; color:var(--cinza-texto); text-transform:uppercase; letter-spacing:0.4px; margin-bottom:8px;">Últimos downloads</h3>
+          <div class="download-log" id="downloadLog"></div>
+        </div>
+      </div>
+      <div class="empty-state">
+        <div class="icon">📋</div>
+        <h3>Nenhum orçamento selecionado</h3>
+        <p>Crie um novo orçamento usando o botão na barra lateral.</p>
+      </div>`;
+    renderDownloadsPanel();
+    return;
+  }
+
+  el.innerHTML = `
+    <!-- Topo -->
+    <div class="main-topo">
+      <div>
+        <h2>${labelOrcamento(orc)}</h2>
+        <p>Criado em ${formatarData(orc.criadoEm)} · ${statusLabel(orc.status)}</p>
+      </div>
+      <div class="acoes">
+        <button class="btn btn-outline" onclick="duplicarComoAtualizacao()">✏️ Editar / Atualizar</button>
+        <button class="btn btn-azul" onclick="salvarRascunho()">💾 Salvar</button>
+        <button class="btn btn-verde" onclick="gerarPDF()">⬇️ Baixar PDF</button>
+        <button class="btn btn-vermelho" onclick="excluirOrcamento()">🗑</button>
+      </div>
+    </div>
+
+    <!-- EMPRESA (fixa) -->
+    <div class="card">
+      <div class="card-header"><h3>🏢 Dados da Empresa (fixos)</h3></div>
+      <div class="card-body">
+        <div class="empresa-row">
+          <strong style="font-size:14px; color:var(--azul)">Elite Supply</strong>
+          <span class="empresa-tag">CNPJ a preencher</span>
+          <span class="empresa-tag">Guaíba/RS</span>
+          <span class="empresa-tag">contato@elitesupply.com.br</span>
+          <span class="empresa-tag">(51) 99454-5467</span>
+        </div>
+        <div style="font-size:12px; color:var(--cinza-texto)">Rua Bento Gonçalves, 205, Centro — Guaíba/RS</div>
+      </div>
+    </div>
+
+    <!-- CLIENTE -->
+    <div class="card">
+      <div class="card-header"><h3>👤 Dados do Cliente</h3></div>
+      <div class="card-body">
+        <div class="form-grid form-grid-2">
+          <div class="form-group">
+            <label>Empresa / Cliente *</label>
+            <input type="text" id="f_cliente" value="${esc(orc.cliente)}" placeholder="Nome da empresa" oninput="atualizar('cliente', this.value)">
+          </div>
+          <div class="form-group">
+            <label>CNPJ</label>
+            <div class="cnpj-row">
+              <input type="text" id="f_cnpj" value="${esc(orc.cnpj)}" placeholder="00.000.000/0001-00" oninput="atualizar('cnpj', this.value); formatarCnpjInput(this)" onblur="formatarCnpjInput(this)">
+              <button type="button" class="btn-buscar-cnpj" id="btnBuscarCnpj" onclick="buscarCNPJ()">🔍 Buscar</button>
+            </div>
+            <div class="cnpj-status" id="cnpjStatus"></div>
+          </div>
+          <div class="form-group">
+            <label>Contato</label>
+            <input type="text" id="f_contato" value="${esc(orc.contato)}" placeholder="Nome do responsável" oninput="atualizar('contato', this.value)">
+          </div>
+          <div class="form-group">
+            <label>E-mail</label>
+            <input type="email" id="f_email" value="${esc(orc.email)}" placeholder="email@empresa.com.br" oninput="atualizar('email', this.value)">
+          </div>
+          <div class="form-group">
+            <label>Telefone</label>
+            <input type="text" id="f_telefone" value="${esc(orc.telefone)}" placeholder="(51) 9xxxx-xxxx" oninput="atualizar('telefone', this.value)">
+          </div>
+          <div class="form-group">
+            <label>Endereço / Cidade</label>
+            <input type="text" id="f_endereco" value="${esc(orc.enderecoCliente)}" placeholder="Cidade/UF" oninput="atualizar('enderecoCliente', this.value)">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ITENS -->
+    <div class="card">
+      <div class="card-header">
+        <h3>📦 Itens da Cotação</h3>
+      </div>
+      <div class="card-body">
+        <div class="tabela-wrap">
+          <table id="tabelaItens">
+            <thead>
+              <tr>
+                <th class="col-ref">Referência</th>
+                <th>Descrição do Produto</th>
+                <th class="col-ref">Moeda</th>
+                <th class="col-qtde">Qtde</th>
+                <th class="col-unit">Valor Unit.</th>
+                <th class="col-total">Valor Total</th>
+                <th class="col-dias">Entrega (dias úteis)</th>
+                <th class="col-fat">Faturado Por</th>
+                <th class="col-del">—</th>
+              </tr>
+            </thead>
+            <tbody id="tbodyItens">
+              ${renderItens(orc.itens)}
+            </tbody>
+            <tfoot>
+              <tr class="tfoot-total">
+                <td colspan="5" class="total-label">Valor Total da Cotação</td>
+                <td class="col-total" id="totalGeral" style="color:white">${calcularTotal(orc.itens)}</td>
+                <td colspan="3"></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+        <button class="btn-add-linha" onclick="adicionarLinha()">＋ Adicionar linha</button>
+      </div>
+    </div>
+
+    <!-- RODAPÉ PROPOSTA -->
+    <div class="card">
+      <div class="card-header"><h3>📋 Condições da Proposta</h3></div>
+      <div class="card-body">
+        <div class="form-grid rodape-grid">
+          <div class="form-group">
+            <label>Vendedor</label>
+            <input type="text" value="${esc(orc.vendedor)}" oninput="atualizar('vendedor', this.value)">
+          </div>
+          <div class="form-group">
+            <label>Validade da Proposta</label>
+            <input type="date" value="${esc(orc.validade)}" oninput="atualizar('validade', this.value)">
+          </div>
+          <div class="form-group">
+            <label>Condição de Pagamento</label>
+            <input type="text" value="${esc(orc.condicaoPagamento)}" placeholder="Ex: 30 DDL" oninput="atualizar('condicaoPagamento', this.value)">
+          </div>
+          <div class="form-group">
+            <label>Forma de Pagamento</label>
+            <input type="text" value="${esc(orc.formaPagamento)}" placeholder="Ex: Boleto Bancário" oninput="atualizar('formaPagamento', this.value)">
+          </div>
+        </div>
+        <div class="form-grid" style="margin-top:12px">
+          <div class="form-group">
+            <label>Observações</label>
+            <textarea placeholder="Informações adicionais, condições especiais..." oninput="atualizar('observacoes', this.value)">${esc(orc.observacoes)}</textarea>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- HISTÓRICO -->
+    <div class="card">
+      <div class="card-header"><h3>🕓 Histórico</h3></div>
+      <div class="card-body" id="historicoBox">
+        ${renderHistorico(orc)}
+      </div>
+    </div>
+
+    <div style="height:40px"></div>
+  `;
+}
+
+function renderItens(itens) {
+  return itens.map((item, i) => `
+    <tr id="row_${item.id}">
+      <td class="col-ref"><input type="text" value="${esc(item.referencia)}" placeholder="Cód." oninput="atualizarItem('${item.id}', 'referencia', this.value)"></td>
+      <td><input type="text" value="${esc(item.descricao)}" placeholder="Descrição do produto" style="min-width:200px" oninput="atualizarItem('${item.id}', 'descricao', this.value)"></td>
+      <td class="col-ref">
+        <select style="border:none;background:transparent;font-size:13px;width:52px" onchange="atualizarItem('${item.id}', 'moeda', this.value)">
+          <option ${item.moeda==='R$'?'selected':''}>R$</option>
+          <option ${item.moeda==='US$'?'selected':''}>US$</option>
+          <option ${item.moeda==='€'?'selected':''}>€</option>
+        </select>
+      </td>
+      <td class="col-qtde"><input type="number" min="1" value="${item.qtde}" style="text-align:center;width:50px" oninput="atualizarItem('${item.id}', 'qtde', this.value)"></td>
+      <td class="col-unit"><input type="text" value="${esc(item.unitario)}" placeholder="0,00" style="text-align:right" oninput="atualizarItem('${item.id}', 'unitario', this.value)"></td>
+      <td class="col-total" id="total_${item.id}">${calcularLinha(item)}</td>
+      <td class="col-dias"><input type="number" min="1" value="${esc(item.entrega)}" placeholder="—" style="text-align:center;width:60px" oninput="atualizarItem('${item.id}', 'entrega', this.value)"></td>
+      <td class="col-fat"><input type="text" value="${esc(item.faturadoPor)}" placeholder="Distribuidor / CNPJ" oninput="atualizarItem('${item.id}', 'faturadoPor', this.value)"></td>
+      <td class="col-del"><button class="btn-del-row" onclick="removerLinha('${item.id}')">✕</button></td>
+    </tr>
+  `).join('');
+}
+
+function renderHistorico(orc) {
+  if (!orc.historico || orc.historico.length === 0) {
+    return '<div style="font-size:13px; color:var(--cinza-texto);">Nenhuma ação registrada ainda.</div>';
+  }
+  return orc.historico.map(h => `
+    <div class="historico-item">
+      <span class="historico-icone">${h.icone}</span>
+      <span class="historico-texto">${h.texto}</span>
+      <span class="historico-data">${h.data}</span>
+    </div>
+  `).join('');
+}
+
+// ════════════════════════════════════════════
+//  PAINEL DE DOWNLOADS (Gabriel x Leonardo)
+// ════════════════════════════════════════════
+function renderDownloadsPanel() {
+  const grid = document.getElementById('downloadsGrid');
+  const log = document.getElementById('downloadLog');
+  if (!grid || !log) return;
+
+  const vendedores = ['Gabriel', 'Leonardo'];
+  const contagem = {};
+  vendedores.forEach(v => contagem[v] = 0);
+  downloads.forEach(d => {
+    if (contagem[d.vendedor] !== undefined) contagem[d.vendedor]++;
+  });
+
+  grid.innerHTML = vendedores.map(v => `
+    <div class="download-card">
+      <div class="avatar">${v[0]}</div>
+      <div class="info">
+        <div class="nome">${v}</div>
+        <div class="qtd">${contagem[v]}</div>
+        <div class="label">orçamentos baixados</div>
+      </div>
+    </div>
+  `).join('');
+
+  if (downloads.length === 0) {
+    log.innerHTML = '<div style="font-size:13px; color:var(--cinza-texto); padding:8px;">Nenhum download registrado ainda.</div>';
+    return;
+  }
+
+  log.innerHTML = downloads.map(d => `
+    <div class="download-log-item">
+      <span class="tag">${d.vendedor || '—'}</span>
+      <span class="desc">${d.cotacao} — ${d.cliente}</span>
+      <span class="data">${d.timestamp ? new Date(d.timestamp.toDate()).toLocaleString('pt-BR') : 'agora'}</span>
+    </div>
+  `).join('');
+}
+
+// ════════════════════════════════════════════
+//  ATUALIZAÇÕES
+// ════════════════════════════════════════════
+let debounceTimers = {};
+function salvarComDebounce(orc) {
+  clearTimeout(debounceTimers[orc.id]);
+  debounceTimers[orc.id] = setTimeout(() => salvarOrcamento(orc), 500);
+}
+
+function atualizar(campo, valor) {
+  const orc = getAtivo();
+  if (!orc) return;
+  orc[campo] = valor;
+  orc.atualizadoEm = new Date().toISOString();
+  salvarComDebounce(orc);
+  if (campo === 'cliente') {
+    renderSidebar();
+    // Atualiza o título
+    const titulo = document.querySelector('.main-topo h2');
+    if (titulo) titulo.textContent = labelOrcamento(orc);
+  }
+}
+
+function atualizarItem(idItem, campo, valor) {
+  const orc = getAtivo();
+  if (!orc) return;
+  const item = orc.itens.find(i => i.id === idItem);
+  if (!item) return;
+  item[campo] = campo === 'qtde' ? (parseFloat(valor)||1) : valor;
+  salvarComDebounce(orc);
+  // Atualiza total da linha e geral
+  const tdTotal = document.getElementById('total_' + idItem);
+  if (tdTotal) tdTotal.textContent = calcularLinha(item);
+  const totalEl = document.getElementById('totalGeral');
+  if (totalEl) totalEl.textContent = calcularTotal(orc.itens);
+}
+
+function adicionarLinha() {
+  const orc = getAtivo();
+  if (!orc) return;
+  const nova = linhaVazia();
+  orc.itens.push(nova);
+  salvarOrcamento(orc);
+  const tbody = document.getElementById('tbodyItens');
+  if (tbody) {
+    tbody.innerHTML = renderItens(orc.itens);
+  }
+  const totalEl = document.getElementById('totalGeral');
+  if (totalEl) totalEl.textContent = calcularTotal(orc.itens);
+}
+
+function removerLinha(idItem) {
+  const orc = getAtivo();
+  if (!orc) return;
+  if (orc.itens.length <= 1) { toast('O orçamento precisa ter ao menos 1 item.', 'info'); return; }
+  orc.itens = orc.itens.filter(i => i.id !== idItem);
+  salvarOrcamento(orc);
+  const row = document.getElementById('row_' + idItem);
+  if (row) row.remove();
+  const totalEl = document.getElementById('totalGeral');
+  if (totalEl) totalEl.textContent = calcularTotal(orc.itens);
+}
+
+// ════════════════════════════════════════════
+//  CÁLCULOS
+// ════════════════════════════════════════════
+function parseMoeda(v) {
+  if (!v) return 0;
+  return parseFloat(String(v).replace(/\./g,'').replace(',','.')) || 0;
+}
+
+function formatMoeda(v) {
+  return v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function calcularLinha(item) {
+  const unit = parseMoeda(item.unitario);
+  const qtde = parseFloat(item.qtde) || 0;
+  if (!unit || !qtde) return '—';
+  return (item.moeda||'R$') + ' ' + formatMoeda(unit * qtde);
+}
+
+function calcularTotal(itens) {
+  // Assume all same currency or just sum
+  const total = itens.reduce((acc, item) => {
+    const unit = parseMoeda(item.unitario);
+    const qtde = parseFloat(item.qtde) || 0;
+    return acc + (unit * qtde);
+  }, 0);
+  if (!total) return '—';
+  const moeda = itens[0]?.moeda || 'R$';
+  return moeda + ' ' + formatMoeda(total);
+}
+
+// ════════════════════════════════════════════
+//  SALVAR RASCUNHO
+// ════════════════════════════════════════════
+function salvarRascunho() {
+  const orc = getAtivo();
+  if (!orc) return;
+  orc.atualizadoEm = new Date().toISOString();
+  adicionarHistorico(orc, '💾', `Rascunho salvo por ${usuarioAtual}`);
+  salvarOrcamento(orc);
+  renderSidebar();
+  toast('Salvo com sucesso!', 'sucesso');
+}
+
+// ════════════════════════════════════════════
+//  DUPLICAR COMO ATUALIZAÇÃO
+// ════════════════════════════════════════════
+function duplicarComoAtualizacao() {
+  const orc = getAtivo();
+  if (!orc) return;
+  if (orc.status === 'rascunho') {
+    toast('Este orçamento ainda não foi baixado. Edite diretamente.', 'info');
+    return;
+  }
+  // Cria nova revisão
+  const nova = JSON.parse(JSON.stringify(orc));
+  nova.id = gerarId();
+  nova.revisao = orc.revisao + 1;
+  nova.status = 'rascunho';
+  nova.criadoEm = new Date().toISOString();
+  nova.atualizadoEm = new Date().toISOString();
+  nova.criadoPor = usuarioAtual;
+  nova.historico = [];
+  adicionarHistorico(nova, '✏️', `Criado como ${labelOrcamento(nova)} por ${usuarioAtual} (baseado na versão anterior)`);
+  orcamentos.push(nova);
+  salvarOrcamento(nova);
+  renderSidebar();
+  abrirOrcamento(nova.id);
+  toast(`${labelOrcamento(nova)} criado!`, 'sucesso');
+}
+
+// ════════════════════════════════════════════
+//  EXCLUIR
+// ════════════════════════════════════════════
+function excluirOrcamento() {
+  if (!confirm('Excluir este orçamento? Esta ação não pode ser desfeita.')) return;
+  const id = orcamentoAtivo;
+  orcamentos = orcamentos.filter(o => o.id !== id);
+  orcamentoAtivo = null;
+  removerOrcamentoDB(id);
+  renderSidebar();
+  renderEditor();
+  toast('Orçamento excluído.', 'info');
+}
+
+// ════════════════════════════════════════════
+//  HISTÓRICO
+// ════════════════════════════════════════════
+function adicionarHistorico(orc, icone, texto) {
+  if (!orc.historico) orc.historico = [];
+  orc.historico.unshift({
+    icone, texto,
+    data: new Date().toLocaleString('pt-BR')
+  });
+}
+
+// ════════════════════════════════════════════
+//  GERAR PDF
+// ════════════════════════════════════════════
+function gerarPDF() {
+  const orc = getAtivo();
+  if (!orc) return;
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+
+  const W = 297, H = 210;
+  const AZUL = [16, 88, 160];
+  const AZUL_DARK = [13, 74, 138];
+  const AZUL_LIGHT = [230, 241, 251];
+  const CINZA = [85, 95, 110];
+  const BRANCO = [255, 255, 255];
+  const PRETO = [30, 30, 46];
+
+  // ── Cabeçalho ──
+  doc.setFillColor(...AZUL);
+  doc.rect(0, 0, W, 28, 'F');
+
+  doc.setTextColor(...BRANCO);
+  doc.setFontSize(16);
+  doc.setFont('helvetica', 'bold');
+  doc.text('ELITE SUPPLY', 10, 11);
+
+  doc.setFontSize(8);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(200, 220, 245);
+  doc.text('contato@elitesupply.com.br  ·  (51) 99454-5467  ·  Rua Bento Gonçalves, 205, Centro — Guaíba/RS', 10, 17);
+
+  // Número da cotação (direita)
+  doc.setTextColor(...BRANCO);
+  doc.setFontSize(11);
+  doc.setFont('helvetica', 'bold');
+  const label = labelOrcamento(orc);
+  doc.text(label, W - 10, 11, { align: 'right' });
+  doc.setFontSize(8);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(200,220,245);
+  doc.text(`Emitido em: ${new Date().toLocaleDateString('pt-BR')}`, W - 10, 17, { align: 'right' });
+
+  // ── Faixa cliente / vendedor ──
+  doc.setFillColor(...AZUL_DARK);
+  doc.rect(0, 28, W, 10, 'F');
+
+  const campos = [
+    ['Cliente', orc.cliente || '—', 10],
+    ['CNPJ', orc.cnpj || '—', 65],
+    ['Contato', orc.contato || '—', 120],
+    ['Vendedor', orc.vendedor || '—', 175],
+    ['Validade', orc.validade ? formatarData(orc.validade) : '—', 235],
+  ];
+  campos.forEach(([label, val, x]) => {
+    doc.setTextColor(180,210,245);
+    doc.setFontSize(6.5);
+    doc.setFont('helvetica', 'bold');
+    doc.text(label.toUpperCase(), x, 32);
+    doc.setTextColor(...BRANCO);
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.text(val, x, 36.5);
+  });
+
+  // ── Tabela de itens ──
+  const colunas = [
+    { header: 'Referência', dataKey: 'ref' },
+    { header: 'Descrição do Produto', dataKey: 'desc' },
+    { header: 'Moeda', dataKey: 'moeda' },
+    { header: 'Qtde', dataKey: 'qtde' },
+    { header: 'Valor Unitário', dataKey: 'unit' },
+    { header: 'Valor Total', dataKey: 'total' },
+    { header: 'Entrega (Dias Úteis)', dataKey: 'entrega' },
+    { header: 'Faturado Por', dataKey: 'fat' },
+  ];
+
+  const linhas = orc.itens.map(item => ({
+    ref: item.referencia || '',
+    desc: item.descricao || '',
+    moeda: item.moeda || 'R$',
+    qtde: String(item.qtde || ''),
+    unit: item.unitario ? formatMoeda(parseMoeda(item.unitario)) : '',
+    total: (() => {
+      const u = parseMoeda(item.unitario);
+      const q = parseFloat(item.qtde)||0;
+      return u && q ? formatMoeda(u*q) : '';
+    })(),
+    entrega: item.entrega ? String(item.entrega) : '',
+    fat: item.faturadoPor || '',
+  }));
+
+  // Linha de total
+  const totalVal = orc.itens.reduce((a, i) => a + parseMoeda(i.unitario)*(parseFloat(i.qtde)||0), 0);
+
+  doc.autoTable({
+    startY: 42,
+    columns: colunas,
+    body: linhas,
+    foot: [[
+      { content: 'Valor Total da Cotação', colSpan: 4, styles: { halign: 'right', fontStyle: 'bold' } },
+      { content: (orc.itens[0]?.moeda||'R$') + ' ' + formatMoeda(totalVal), colSpan: 4, styles: { halign: 'left', fontStyle: 'bold' } },
+    ]],
+    headStyles: {
+      fillColor: AZUL, textColor: BRANCO, fontSize: 8, fontStyle: 'bold',
+      halign: 'center', cellPadding: 3,
+    },
+    bodyStyles: { fontSize: 8.5, cellPadding: { top:4, bottom:4, left:3, right:3 }, textColor: PRETO },
+    alternateRowStyles: { fillColor: AZUL_LIGHT },
+    footStyles: { fillColor: AZUL, textColor: BRANCO, fontSize: 9, fontStyle: 'bold' },
+    columnStyles: {
+      ref: { cellWidth: 18 },
+      desc: { cellWidth: 'auto' },
+      moeda: { cellWidth: 14, halign: 'center' },
+      qtde: { cellWidth: 12, halign: 'center' },
+      unit: { cellWidth: 28, halign: 'right' },
+      total: { cellWidth: 30, halign: 'right', fontStyle: 'bold', textColor: AZUL },
+      entrega: { cellWidth: 22, halign: 'center' },
+      fat: { cellWidth: 38 },
+    },
+    margin: { left: 10, right: 10 },
+    tableLineColor: [200, 215, 235],
+    tableLineWidth: 0.1,
+  });
+
+  // ── Rodapé condições ──
+  const afterTable = doc.lastAutoTable.finalY + 5;
+  if (afterTable < H - 25) {
+    doc.setFillColor(...AZUL);
+    doc.rect(10, afterTable, W - 20, 6.5, 'F');
+    doc.setTextColor(...BRANCO);
+    doc.setFontSize(7);
+    doc.setFont('helvetica', 'bold');
+    doc.text('CONDIÇÕES DA PROPOSTA', 13, afterTable + 4.5);
+
+    doc.setFillColor(240, 245, 252);
+    doc.rect(10, afterTable + 6.5, W - 20, 10, 'F');
+    doc.setTextColor(...PRETO);
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+
+    const conds = [
+      ['Vendedor', orc.vendedor || '—', 13],
+      ['Validade da Proposta', orc.validade ? formatarData(orc.validade) : '—', 68],
+      ['Condição de Pagamento', orc.condicaoPagamento || '—', 135],
+      ['Forma de Pagamento', orc.formaPagamento || '—', 200],
+    ];
+    conds.forEach(([lbl, val, x]) => {
+      doc.setFontSize(6.5);
+      doc.setTextColor(...CINZA);
+      doc.setFont('helvetica', 'bold');
+      doc.text(lbl.toUpperCase(), x, afterTable + 10);
+      doc.setFontSize(8.5);
+      doc.setTextColor(...PRETO);
+      doc.setFont('helvetica', 'normal');
+      doc.text(val, x, afterTable + 15);
+    });
+
+    if (orc.observacoes) {
+      const obsY = afterTable + 17;
+      doc.setFontSize(7);
+      doc.setTextColor(...CINZA);
+      doc.setFont('helvetica', 'italic');
+      doc.text('Obs: ' + orc.observacoes, 13, obsY);
+    }
+  }
+
+  // ── Rodapé da página ──
+  doc.setFillColor(240, 245, 252);
+  doc.rect(0, H - 10, W, 10, 'F');
+  doc.setDrawColor(200, 215, 235);
+  doc.line(0, H - 10, W, H - 10);
+  doc.setTextColor(...CINZA);
+  doc.setFontSize(7);
+  doc.setFont('helvetica', 'normal');
+  doc.text('Elite Supply · Distribuição de Hardware Corporativo · LGPD', W/2, H - 4.5, { align: 'center' });
+
+  // ── Salvar e marcar status ──
+  const nomeArquivo = `${labelOrcamento(orc).replace(/\s·\s/g, '_').replace(/\s/g, '_')}_${orc.cliente || 'cliente'}.pdf`;
+  doc.save(nomeArquivo);
+
+  // Atualiza status
+  orc.status = 'baixado';
+  adicionarHistorico(orc, '⬇️', `PDF baixado por ${usuarioAtual}: ${nomeArquivo}`);
+  salvarOrcamento(orc);
+  registrarDownload(orc);
+  renderSidebar();
+
+  // Atualiza badge no editor
+  const badgeEl = document.querySelector('.main-topo p');
+  if (badgeEl) badgeEl.innerHTML = `Criado em ${formatarData(orc.criadoEm)} · ${statusLabel(orc.status)}`;
+
+  toast('PDF gerado e baixado!', 'sucesso');
+}
+
+// ════════════════════════════════════════════
+//  UTILITÁRIOS
+// ════════════════════════════════════════════
+function esc(v) {
+  if (!v && v !== 0) return '';
+  return String(v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function formatarData(iso) {
+  if (!iso) return '—';
+  try {
+    // Tenta formatar como data
+    const d = new Date(iso);
+    if (isNaN(d)) return iso;
+    return d.toLocaleDateString('pt-BR');
+  } catch { return iso; }
+}
+
+function toast(msg, tipo = 'info') {
+  const el = document.getElementById('toast');
+  el.textContent = tipo === 'sucesso' ? '✅ ' + msg : 'ℹ️ ' + msg;
+  el.className = 'toast show ' + tipo;
+  setTimeout(() => el.className = 'toast ' + tipo, 2800);
+}
+
+// ════════════════════════════════════════════
+//  INIT
+// ════════════════════════════════════════════
+verificarUsuario();
+ouvirOrcamentos();
+ouvirDownloads();
+renderEditor(); // mostra o painel de downloads / tela inicial enquanto carrega
+
+</script>
+</body>
+</html>
