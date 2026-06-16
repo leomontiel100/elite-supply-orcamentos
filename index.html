@@ -1123,10 +1123,16 @@ function gerarPDF() {
   doc.setFont('helvetica', 'bold');
   doc.text('ELITE SUPPLY', 10, 11);
 
+  const contatosVendedor = {
+    'Leonardo': { email: 'leonardo@elitesupply.com.br', tel: '(51) 99454-5467' },
+    'Gabriel':  { email: 'gabriel@elitesupply.com.br',  tel: '(51) 99639-4245' },
+  };
+  const ctv = contatosVendedor[usuarioAtual] || { email: 'contato@elitesupply.com.br', tel: '(51) 99454-5467' };
+
   doc.setFontSize(8);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(200, 220, 245);
-  doc.text('contato@elitesupply.com.br  ·  (51) 99454-5467  ·  Rua Bento Gonçalves, 205, Centro — Guaíba/RS', 10, 17);
+  doc.text(`${ctv.email}  ·  ${ctv.tel}  ·  Rua Bento Gonçalves, 205, Centro — Guaíba/RS`, 10, 17);
 
   // Número da cotação (direita)
   doc.setTextColor(...BRANCO);
